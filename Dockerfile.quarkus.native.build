@@ -1,0 +1,52 @@
+FROM debian:stretch-slim
+
+RUN apt update && apt install wget curl build-essential libz-dev zlib1g-dev -y && mkdir /downloads && mkdir /graalvm
+
+WORKDIR /downloads
+
+# GRAALVM VARIABLES
+ARG GRAALVM_VERSION=21.0.0.2
+ARG JAVA_VERSION=java11
+ARG GRAALVM_PKG=https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-${GRAALVM_VERSION}/graalvm-ce-${JAVA_VERSION}-linux-amd64-${GRAALVM_VERSION}.tar.gz
+ARG TARGETPLATFORM
+
+# MAVEN VARIABLES
+ARG MAVEN_VERSION=3.6.3         
+ARG USER_HOME_DIR="/root"
+ARG SHA=c35a1803a6e70a126e80b2b3ae33eed961f83ed74d18fcd16909b2d44d7dada3203f1ffe726c17ef8dcca2dcaa9fca676987befeadc9b9f759967a8cb77181c0
+ARG BASE_URL=https://ftp.nluug.nl/internet/apache/maven/maven-3/${MAVEN_VERSION}/binaries
+
+RUN wget $GRAALVM_PKG
+
+RUN tar -xvzf /downloads/graalvm-ce-${JAVA_VERSION}-linux-amd64-${GRAALVM_VERSION}.tar.gz -C /graalvm
+
+ENV JAVA_HOME="/graalvm/graalvm-ce-${JAVA_VERSION}-${GRAALVM_VERSION}"
+ENV PATH="$PATH:$JAVA_HOME/bin"
+
+RUN { \
+        java --version ; \
+        echo "jlink version:" && \
+        jlink --version ; \
+    }
+
+WORKDIR $JAVA_HOME/bin
+
+RUN gu install native-image
+
+## Install Maven
+RUN mkdir -p /usr/share/maven /usr/share/maven/ref \
+  && echo "Downloading maven" \
+  && curl -fsSL -o /tmp/apache-maven.tar.gz ${BASE_URL}/apache-maven-${MAVEN_VERSION}-bin.tar.gz \
+  \
+  && echo "Checking download hash" \
+  && echo "${SHA}  /tmp/apache-maven.tar.gz" | sha512sum -c - \
+  \
+  && echo "Unzipping maven" \
+  && tar -xzf /tmp/apache-maven.tar.gz -C /usr/share/maven --strip-components=1 \
+  \
+  && echo "Cleaning and setting links" \
+  && rm -f /tmp/apache-maven.tar.gz \
+  && ln -s /usr/share/maven/bin/mvn /usr/bin/mvn
+
+ENV MAVEN_HOME /usr/share/maven
+ENV MAVEN_CONFIG "$USER_HOME_DIR/.m2"
